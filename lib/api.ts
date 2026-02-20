@@ -7,8 +7,10 @@ export async function fetchActiveMatches(): Promise<ProcessedMatch[]> {
   const url = new URL(`${GAMMA_API_BASE}/events`);
   url.searchParams.append('active', 'true');
   url.searchParams.append('closed', 'false');
-  // Fetch a massive chunk of 300 markets so our strict 1x2 filter has enough data to work with
-  url.searchParams.append('limit', '300');
+  // 1. EXACT SPORTS FILTER: '1' is the master "Sports" tag on Polymarket
+  url.searchParams.append('tag_id', '1');
+  // 2. Fetch a large batch so we have plenty of matches to render
+  url.searchParams.append('limit', '100');
 
   try {
     const response = await fetch(url.toString(), { cache: 'no-store' });
@@ -16,6 +18,7 @@ export async function fetchActiveMatches(): Promise<ProcessedMatch[]> {
 
     const events: PolymarketEvent[] = await response.json();
 
+    // Extract matches and filter out nulls (non 1x2 / non-moneyline events)
     const matches = events
       .map(extractFavorite)
       .filter((match): match is ProcessedMatch => match !== null);

@@ -9,12 +9,10 @@ export function extractFavorite(event: PolymarketEvent): ProcessedMatch | null {
 
   let mappedOutcomes: ProcessedOutcome[] = [];
 
-  // POLYMARKET ARCHITECTURE:
-  // 1x2 and Moneyline sports are usually Multi-Market Events (2 or 3 markets grouped together).
-  // Each individual market is a "Yes/No" market representing one team.
+  // SCENARIO 1: Multi-Market Event (Standard Polymarket Sports Setup)
+  // Example: Market 1 (Arsenal Yes/No), Market 2 (Chelsea Yes/No), Market 3 (Draw Yes/No)
   if (event.markets.length === 2 || event.markets.length === 3) {
-    // Extract the "Yes" side of each market to represent the Team
-    event.markets.forEach((m) => {
+    for (const m of event.markets) {
       try {
         const outs: string[] =
           typeof m.outcomes === 'string' ? JSON.parse(m.outcomes) : m.outcomes;
@@ -27,17 +25,20 @@ export function extractFavorite(event: PolymarketEvent): ProcessedMatch | null {
             ? JSON.parse(m.clobTokenIds)
             : m.clobTokenIds;
 
+        // We only care about the "Yes" side for each team's specific market
         const yesIndex = outs.indexOf('Yes');
 
         if (yesIndex !== -1) {
           const price = parseFloat(prices[yesIndex]);
 
-          // Clean the question to look like a standard team name (e.g. "Will Arsenal win?" -> "Arsenal")
+          // Polymarket questions are verbose (e.g. "Will Arsenal win?"). We clean it to just "Arsenal"
           let teamName = m.question || 'Unknown';
           teamName = teamName
             .replace('Will ', '')
+            .replace(' win the match?', '')
             .replace(' win?', '')
-            .replace(' win the match?', '');
+            .replace('?', '')
+            .trim();
 
           mappedOutcomes.push({
             name: teamName,
@@ -46,12 +47,13 @@ export function extractFavorite(event: PolymarketEvent): ProcessedMatch | null {
           });
         }
       } catch (e) {
-        // Safely skip malformed markets
+        // Safely skip malformed individual markets
       }
-    });
+    }
   }
 
-  // FALLBACK: Occasionally, sports are single markets with categorical outcomes like ["Lakers", "Bulls"]
+  // SCENARIO 2: Single Market Event
+  // Rare fallback where outcomes are directly ["Lakers", "Warriors"]
   if (mappedOutcomes.length === 0 && event.markets.length === 1) {
     try {
       const m = event.markets[0];
@@ -66,12 +68,11 @@ export function extractFavorite(event: PolymarketEvent): ProcessedMatch | null {
           ? JSON.parse(m.clobTokenIds)
           : m.clobTokenIds;
 
-      // Ensure it is strictly a matchup, not a binary question
+      // Reject if it's a binary Yes/No question
       if (
         Array.isArray(outs) &&
         (outs.length === 2 || outs.length === 3) &&
-        !outs.includes('Yes') &&
-        !outs.includes('No')
+        !outs.includes('Yes')
       ) {
         mappedOutcomes = outs.map((name, index) => ({
           name,
@@ -84,7 +85,7 @@ export function extractFavorite(event: PolymarketEvent): ProcessedMatch | null {
     }
   }
 
-  // STRICT FILTER: If we didn't extract exactly 2 (Moneyline) or 3 (1x2) outcomes, brutally reject the event
+  // THE GATEKEEPER: If we do not have exactly 2 (Moneyline) or 3 (1x2) teams, it's not a standard match. Discard it.
   if (mappedOutcomes.length < 2 || mappedOutcomes.length > 3) {
     return null;
   }
@@ -93,11 +94,11 @@ export function extractFavorite(event: PolymarketEvent): ProcessedMatch | null {
     id: event.id,
     title: event.title,
     startDate: event.startDate,
-    endDate: event.endDate,
-    favoriteTeam: mappedOutcomes[0]?.name || '',
+    endDate: event.endDate || event.startDate,
+    favoriteTeam: mappedOutcomes[0]?.name || '', // Just a fallback reference
     impliedProbability: mappedOutcomes[0]?.price || 0,
     clobTokenId: mappedOutcomes[0]?.clobTokenId || '',
-    isLive: false, // Ignored for this phase as requested
+    isLive: event.active, // Ignored for this phase as requested
     outcomes: mappedOutcomes,
   };
 }
