@@ -1,13 +1,7 @@
 import { ProcessedMatch } from '../../types/polymarket';
 
 export function MatchCard({ match }: { match: ProcessedMatch }) {
-  // Clean up the title strings (e.g., "EPL: Arsenal vs Chelsea" -> "Arsenal vs Chelsea")
-  const titleParts = match.title.split(/ - | \· |: /);
-  const category = titleParts.length > 1 ? titleParts[0] : 'Sports';
-  const matchTitle =
-    titleParts.length > 1 ? titleParts[titleParts.length - 1] : match.title;
-
-  // Handle missing dates safely
+  // Safe date formatting
   const dateString = match.endDate
     ? new Date(match.endDate).toLocaleDateString('en-US', {
         month: 'short',
@@ -24,19 +18,18 @@ export function MatchCard({ match }: { match: ProcessedMatch }) {
           {/* Top Header */}
           <div className="flex justify-between items-center text-[13px] text-gray-400 font-semibold">
             <span className="bg-[#1e2226] px-2 py-1 rounded-md text-gray-300">
-              {category}
+              {match.category}
             </span>
             <span className="text-gray-500 text-[12px]">{dateString}</span>
           </div>
 
           {/* Match Title */}
           <div className="text-[16px] font-bold text-gray-100">
-            {matchTitle}
+            {match.matchTitle}
           </div>
 
           {/* 1x2 / Moneyline Odds Grid */}
           <div className="flex flex-col gap-3 w-full mt-2">
-            {/* Dynamically adjust to 2 or 3 columns based on Moneyline vs 1x2 */}
             <div
               className={`grid gap-2 w-full ${match.outcomes.length === 3 ? 'grid-cols-3' : 'grid-cols-2'}`}
             >

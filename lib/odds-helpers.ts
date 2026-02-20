@@ -9,8 +9,7 @@ export function extractFavorite(event: PolymarketEvent): ProcessedMatch | null {
 
   let mappedOutcomes: ProcessedOutcome[] = [];
 
-  // SCENARIO 1: Multi-Market Event (Standard Polymarket Sports Setup)
-  // Example: Market 1 (Arsenal Yes/No), Market 2 (Chelsea Yes/No), Market 3 (Draw Yes/No)
+  // Scrape grouped markets for 1x2 and Moneyline Teams
   if (event.markets.length === 2 || event.markets.length === 3) {
     for (const m of event.markets) {
       try {
@@ -25,13 +24,10 @@ export function extractFavorite(event: PolymarketEvent): ProcessedMatch | null {
             ? JSON.parse(m.clobTokenIds)
             : m.clobTokenIds;
 
-        // We only care about the "Yes" side for each team's specific market
         const yesIndex = outs.indexOf('Yes');
 
         if (yesIndex !== -1) {
           const price = parseFloat(prices[yesIndex]);
-
-          // Polymarket questions are verbose (e.g. "Will Arsenal win?"). We clean it to just "Arsenal"
           let teamName = m.question || 'Unknown';
           teamName = teamName
             .replace('Will ', '')
@@ -47,13 +43,12 @@ export function extractFavorite(event: PolymarketEvent): ProcessedMatch | null {
           });
         }
       } catch (e) {
-        // Safely skip malformed individual markets
+        // Skip malformed
       }
     }
   }
 
-  // SCENARIO 2: Single Market Event
-  // Rare fallback where outcomes are directly ["Lakers", "Warriors"]
+  // Fallback for single direct-matchup markets
   if (mappedOutcomes.length === 0 && event.markets.length === 1) {
     try {
       const m = event.markets[0];
@@ -68,7 +63,6 @@ export function extractFavorite(event: PolymarketEvent): ProcessedMatch | null {
           ? JSON.parse(m.clobTokenIds)
           : m.clobTokenIds;
 
-      // Reject if it's a binary Yes/No question
       if (
         Array.isArray(outs) &&
         (outs.length === 2 || outs.length === 3) &&
@@ -81,24 +75,41 @@ export function extractFavorite(event: PolymarketEvent): ProcessedMatch | null {
         }));
       }
     } catch (e) {
-      // Safely skip
+      // Skip
     }
   }
 
-  // THE GATEKEEPER: If we do not have exactly 2 (Moneyline) or 3 (1x2) teams, it's not a standard match. Discard it.
   if (mappedOutcomes.length < 2 || mappedOutcomes.length > 3) {
     return null;
   }
 
+  let category = 'Sports';
+  let matchTitle = event.title;
+
+  if (event.title.includes(':')) {
+    const parts = event.title.split(':');
+    category = parts[0].trim();
+    matchTitle = parts.slice(1).join(':').trim();
+  } else if (event.title.includes(' - ')) {
+    const parts = event.title.split(' - ');
+    category = parts[0].trim();
+    matchTitle = parts.slice(1).join(' - ').trim();
+  }
+
+  // EXACT "LIVE" LOGIC: The game has passed its scheduled start time, but is still actively trading.
+  const isLive = new Date(event.startDate).getTime() < Date.now();
+
   return {
     id: event.id,
     title: event.title,
+    matchTitle,
+    category,
     startDate: event.startDate,
     endDate: event.endDate || event.startDate,
-    favoriteTeam: mappedOutcomes[0]?.name || '', // Just a fallback reference
+    favoriteTeam: mappedOutcomes[0]?.name || '',
     impliedProbability: mappedOutcomes[0]?.price || 0,
     clobTokenId: mappedOutcomes[0]?.clobTokenId || '',
-    isLive: event.active, // Ignored for this phase as requested
+    isLive, // We will use this in the API filter!
     outcomes: mappedOutcomes,
   };
 }

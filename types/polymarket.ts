@@ -27,11 +27,13 @@ export interface ProcessedOutcome {
 export interface ProcessedMatch {
   id: string;
   title: string;
+  matchTitle: string; // The clean match name (e.g., "Lakers vs Bulls")
+  category: string; // The extracted sport category (e.g., "NBA")
   startDate: string;
   endDate: string;
   favoriteTeam: string;
   impliedProbability: number;
   clobTokenId: string;
   isLive: boolean;
-  outcomes: ProcessedOutcome[]; // NEW: Captures all teams in the match
+  outcomes: ProcessedOutcome[];
 }
