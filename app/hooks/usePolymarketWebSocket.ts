@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ProcessedMatch } from '../types/polymarket';
+import { ProcessedMatch } from '../../types/polymarket';
 
 const POLYMARKET_WS_URL =
   'wss://ws-subscriptions-clob.polymarket.com/ws/market';
