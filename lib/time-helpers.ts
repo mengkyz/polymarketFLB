@@ -6,15 +6,19 @@ export interface GroupedMatches {
 
 export function groupMatchesByTime(matches: ProcessedMatch[]): GroupedMatches {
   return matches.reduce((acc: GroupedMatches, match) => {
-    const date = new Date(match.startDate);
+    // FIX: Group by the match's resolution time (endDate) instead of creation date
+    const date = new Date(match.endDate);
 
-    // Extract the hour and calculate which 3-hour block it falls into
     const hour = date.getHours();
     const blockStart = Math.floor(hour / 3) * 3;
     const blockEnd = blockStart + 3;
 
-    // Format the key (e.g., "15:00 - 18:00")
-    const blockKey = `${blockStart.toString().padStart(2, '0')}:00 - ${blockEnd.toString().padStart(2, '0')}:00`;
+    // Add the specific day so the schedule spans across multiple days cleanly
+    const day = date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+    });
+    const blockKey = `${day} | ${blockStart.toString().padStart(2, '0')}:00 - ${blockEnd.toString().padStart(2, '0')}:00`;
 
     if (!acc[blockKey]) {
       acc[blockKey] = [];

@@ -1,74 +1,103 @@
-import { PolymarketEvent, ProcessedMatch } from '../types/polymarket';
+import {
+  PolymarketEvent,
+  ProcessedMatch,
+  ProcessedOutcome,
+} from '../types/polymarket';
 
 export function extractFavorite(event: PolymarketEvent): ProcessedMatch | null {
   if (!event.markets || event.markets.length === 0) return null;
 
-  // We target the primary market (usually the 1x2 or moneyline)
-  const primaryMarket = event.markets[0];
-  if (
-    !primaryMarket.outcomes ||
-    !primaryMarket.outcomePrices ||
-    !primaryMarket.clobTokenIds
-  )
-    return null;
+  let mappedOutcomes: ProcessedOutcome[] = [];
 
-  try {
-    // Polymarket's API returns these as stringified JSON arrays (e.g., '["0.75", "0.25"]').
-    // We need to parse them back into actual JavaScript arrays.
-    const outcomes: string[] =
-      typeof primaryMarket.outcomes === 'string'
-        ? JSON.parse(primaryMarket.outcomes)
-        : primaryMarket.outcomes;
+  // POLYMARKET ARCHITECTURE:
+  // 1x2 and Moneyline sports are usually Multi-Market Events (2 or 3 markets grouped together).
+  // Each individual market is a "Yes/No" market representing one team.
+  if (event.markets.length === 2 || event.markets.length === 3) {
+    // Extract the "Yes" side of each market to represent the Team
+    event.markets.forEach((m) => {
+      try {
+        const outs: string[] =
+          typeof m.outcomes === 'string' ? JSON.parse(m.outcomes) : m.outcomes;
+        const prices: string[] =
+          typeof m.outcomePrices === 'string'
+            ? JSON.parse(m.outcomePrices)
+            : m.outcomePrices;
+        const tokens: string[] =
+          typeof m.clobTokenIds === 'string'
+            ? JSON.parse(m.clobTokenIds)
+            : m.clobTokenIds;
 
-    const outcomePrices: string[] =
-      typeof primaryMarket.outcomePrices === 'string'
-        ? JSON.parse(primaryMarket.outcomePrices)
-        : primaryMarket.outcomePrices;
+        const yesIndex = outs.indexOf('Yes');
 
-    const clobTokenIds: string[] =
-      typeof primaryMarket.clobTokenIds === 'string'
-        ? JSON.parse(primaryMarket.clobTokenIds)
-        : primaryMarket.clobTokenIds;
+        if (yesIndex !== -1) {
+          const price = parseFloat(prices[yesIndex]);
 
-    // Safety check: ensure they parsed correctly into arrays
-    if (
-      !Array.isArray(outcomePrices) ||
-      !Array.isArray(outcomes) ||
-      !Array.isArray(clobTokenIds)
-    ) {
-      return null;
-    }
+          // Clean the question to look like a standard team name (e.g. "Will Arsenal win?" -> "Arsenal")
+          let teamName = m.question || 'Unknown';
+          teamName = teamName
+            .replace('Will ', '')
+            .replace(' win?', '')
+            .replace(' win the match?', '');
 
-    let maxPrice = -1;
-    let favoriteIndex = -1;
-
-    // Scan the orderbook prices to find the highest implied probability
-    outcomePrices.forEach((priceStr, index) => {
-      const price = parseFloat(priceStr);
-      if (price > maxPrice) {
-        maxPrice = price;
-        favoriteIndex = index;
+          mappedOutcomes.push({
+            name: teamName,
+            price: isNaN(price) ? 0 : price,
+            clobTokenId: tokens[yesIndex],
+          });
+        }
+      } catch (e) {
+        // Safely skip malformed markets
       }
     });
+  }
 
-    // Discard if no valid odds are found
-    if (favoriteIndex === -1) return null;
+  // FALLBACK: Occasionally, sports are single markets with categorical outcomes like ["Lakers", "Bulls"]
+  if (mappedOutcomes.length === 0 && event.markets.length === 1) {
+    try {
+      const m = event.markets[0];
+      const outs: string[] =
+        typeof m.outcomes === 'string' ? JSON.parse(m.outcomes) : m.outcomes;
+      const prices: string[] =
+        typeof m.outcomePrices === 'string'
+          ? JSON.parse(m.outcomePrices)
+          : m.outcomePrices;
+      const tokens: string[] =
+        typeof m.clobTokenIds === 'string'
+          ? JSON.parse(m.clobTokenIds)
+          : m.clobTokenIds;
 
-    // Determine if the match has already started
-    const isLive = new Date(event.startDate).getTime() < Date.now();
+      // Ensure it is strictly a matchup, not a binary question
+      if (
+        Array.isArray(outs) &&
+        (outs.length === 2 || outs.length === 3) &&
+        !outs.includes('Yes') &&
+        !outs.includes('No')
+      ) {
+        mappedOutcomes = outs.map((name, index) => ({
+          name,
+          price: parseFloat(prices[index]) || 0,
+          clobTokenId: tokens[index],
+        }));
+      }
+    } catch (e) {
+      // Safely skip
+    }
+  }
 
-    return {
-      id: event.id,
-      title: event.title,
-      startDate: event.startDate,
-      favoriteTeam: outcomes[favoriteIndex],
-      impliedProbability: maxPrice,
-      clobTokenId: clobTokenIds[favoriteIndex],
-      isLive,
-    };
-  } catch (error) {
-    // If JSON.parse fails, it means the market data was malformed, so we safely skip it.
-    console.error(`Error parsing market data for event ${event.id}:`, error);
+  // STRICT FILTER: If we didn't extract exactly 2 (Moneyline) or 3 (1x2) outcomes, brutally reject the event
+  if (mappedOutcomes.length < 2 || mappedOutcomes.length > 3) {
     return null;
   }
+
+  return {
+    id: event.id,
+    title: event.title,
+    startDate: event.startDate,
+    endDate: event.endDate,
+    favoriteTeam: mappedOutcomes[0]?.name || '',
+    impliedProbability: mappedOutcomes[0]?.price || 0,
+    clobTokenId: mappedOutcomes[0]?.clobTokenId || '',
+    isLive: false, // Ignored for this phase as requested
+    outcomes: mappedOutcomes,
+  };
 }

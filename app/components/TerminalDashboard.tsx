@@ -1,123 +1,47 @@
 'use client';
 
-import { useState, useMemo } from 'react';
 import { ProcessedMatch } from '../../types/polymarket';
 import { usePolymarketWebSocket } from '../hooks/usePolymarketWebSocket';
-import { FilterBar } from './FilterBar';
-import { MatchRow } from './MatchRow';
-import { groupMatchesByTime } from '../../lib/time-helpers';
+import { MatchCard } from './MatchCard';
+import { TopNav } from './TopNav';
 
 export function TerminalDashboard({
   initialMatches,
 }: {
   initialMatches: ProcessedMatch[];
 }) {
-  // 1. Hook up the real-time WebSocket for institutional-grade speed
+  // Feed the raw sports matches into the WebSocket to get live price flashes
   const liveMatches = usePolymarketWebSocket(initialMatches);
 
-  // 2. State for your quantitative filters
-  const [minOdds, setMinOdds] = useState<number>(0.65); // Default 65% probability
-  const [maxOdds, setMaxOdds] = useState<number>(0.85); // Default 85% probability
-  const [sportTag, setSportTag] = useState<string>('');
-
-  // 3. Apply the filters dynamically
-  const filteredMatches = useMemo(() => {
-    return liveMatches.filter((match) => {
-      const inRange =
-        match.impliedProbability >= minOdds &&
-        match.impliedProbability <= maxOdds;
-      return inRange;
-    });
-  }, [liveMatches, minOdds, maxOdds]);
-
-  // 4. Split into Live and Prematch arrays
-  const { inPlay, upcoming } = useMemo(() => {
-    const inPlay: ProcessedMatch[] = [];
-    const upcoming: ProcessedMatch[] = [];
-
-    filteredMatches.forEach((match) => {
-      if (match.isLive) {
-        inPlay.push(match);
-      } else {
-        upcoming.push(match);
-      }
-    });
-
-    return { inPlay, upcoming };
-  }, [filteredMatches]);
-
-  // 5. Group the Prematch array by 3-hour scheduling blocks
-  const upcomingGrouped = useMemo(
-    () => groupMatchesByTime(upcoming),
-    [upcoming],
-  );
-
   return (
-    <div className="flex flex-col h-screen bg-black text-white font-sans">
-      {/* Header & Filters */}
-      <div className="p-4 border-b border-gray-800">
-        <h1 className="text-2xl font-bold mb-4 tracking-tight">
-          Polymarket Alpha Screener
-        </h1>
-        <FilterBar
-          minOdds={minOdds}
-          setMinOdds={setMinOdds}
-          maxOdds={maxOdds}
-          setMaxOdds={setMaxOdds}
-          sportTag={sportTag}
-          setSportTag={setSportTag}
-        />
-      </div>
+    <div className="min-h-screen bg-[#15191d] text-white font-sans selection:bg-white/10 flex flex-col">
+      <TopNav />
+      <main className="flex-1 w-full max-w-[1350px] mx-auto px-4 lg:px-6 pt-6 pb-20">
+        <div className="flex justify-center w-full">
+          <div className="flex-1 max-w-[756px] w-full">
+            <div className="flex items-center justify-between h-9 mb-4">
+              <h1 className="text-[24px] md:text-[28px] font-semibold tracking-tight text-white">
+                Sports Matches (1x2 & Moneyline)
+              </h1>
+              <span className="text-sm font-mono text-gray-500 bg-[#1e2226] px-3 py-1 rounded-full">
+                {liveMatches.length} Matches Found
+              </span>
+            </div>
 
-      {/* Split Screen Panels */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Left Column: LIVE */}
-        <div className="w-1/2 border-r border-gray-800 flex flex-col">
-          <div className="bg-gray-900 p-2 border-b border-gray-800">
-            <h2 className="text-sm font-semibold text-green-400 uppercase tracking-wider">
-              ● Live Markets ({inPlay.length})
-            </h2>
-          </div>
-          <div className="flex-1 overflow-y-auto">
-            {inPlay.length === 0 ? (
-              <div className="p-4 text-gray-500 text-sm">
-                No live matches in this odds range.
-              </div>
-            ) : (
-              inPlay.map((match) => <MatchRow key={match.id} match={match} />)
-            )}
-          </div>
-        </div>
-
-        {/* Right Column: PREMATCH */}
-        <div className="w-1/2 flex flex-col">
-          <div className="bg-gray-900 p-2 border-b border-gray-800">
-            <h2 className="text-sm font-semibold text-blue-400 uppercase tracking-wider">
-              Upcoming Setups ({upcoming.length})
-            </h2>
-          </div>
-          <div className="flex-1 overflow-y-auto">
-            {Object.keys(upcomingGrouped).length === 0 ? (
-              <div className="p-4 text-gray-500 text-sm">
-                No upcoming matches in this odds range.
-              </div>
-            ) : (
-              Object.entries(upcomingGrouped)
-                .sort()
-                .map(([timeBlock, matches]) => (
-                  <div key={timeBlock} className="mb-4">
-                    <div className="bg-gray-800 p-1 px-3 text-xs text-gray-300 font-mono border-y border-gray-700">
-                      {timeBlock}
-                    </div>
-                    {matches.map((match) => (
-                      <MatchRow key={match.id} match={match} />
-                    ))}
-                  </div>
+            <div className="flex flex-col">
+              {liveMatches.length === 0 ? (
+                <div className="text-gray-500 py-8 text-center bg-[#1e2226] rounded-xl border border-gray-800">
+                  Fetching sports data from Polymarket...
+                </div>
+              ) : (
+                liveMatches.map((match) => (
+                  <MatchCard key={match.id} match={match} />
                 ))
-            )}
+              )}
+            </div>
           </div>
         </div>
-      </div>
+      </main>
     </div>
   );
 }
